@@ -38,6 +38,8 @@
     border-radius: 10px 10px 0 0; cursor: pointer; white-space: nowrap; color: #8a8f99; font-weight: 600; font-size: 14px; font-family: inherit; }
   .tab.active { background: var(--bg); color: var(--ink); }
   .tab .em { font-size: 16px; }
+  .tabedit { display: inline-flex; align-items: center; margin-left: 4px; color: #9aa0ab; }
+  .tabedit svg { width: 14px; height: 14px; }
   .tabadd { display: flex; align-items: center; justify-content: center; width: 38px; height: 38px;
     border: none; background: transparent; color: #9aa0ab; cursor: pointer; border-radius: 10px; flex-shrink: 0; }
 
@@ -182,7 +184,8 @@
       download:'<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>',
       upload:'<path d="M12 21V9M7 14l5-5 5 5M5 3h14"/>',
       copy:'<path d="M9 9h10v11H9zM5 15V4h11"/>',
-      shield:'<path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6z"/>'
+      shield:'<path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6z"/>',
+      pencil:'<path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/>'
     };
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">'+p[name]+'</svg>';
   }
@@ -200,8 +203,11 @@
     // タブ
     html += '<div class="tabbar"><div class="tabscroll">';
     data.lists.forEach(function(l){
-      html += '<button class="tab'+(l.id===list.id?' active':'')+'" data-list="'+l.id+'">'+
-        '<span class="em">'+l.emoji+'</span><span>'+esc(l.name)+'</span></button>';
+      var isActive = l.id===list.id;
+      html += '<button class="tab'+(isActive?' active':'')+'" data-list="'+l.id+'">'+
+        '<span class="em">'+l.emoji+'</span><span>'+esc(l.name)+'</span>'+
+        (isActive ? '<span class="tabedit" data-editlist="'+l.id+'">'+ico("pencil")+'</span>' : '')+
+        '</button>';
     });
     html += '<button class="tabadd" data-addlist="1">'+ico("plus")+'</button>';
     html += '</div></div>';
@@ -454,8 +460,10 @@
 
   // ---- イベント（委譲） ----
   document.addEventListener("click", function(e){
-    var t = e.target.closest("[data-check],[data-list],[data-addlist],[data-addhabit],[data-edit],[data-week],[data-emoji],[data-save],[data-del],[data-close],[data-overlay],[data-backup],[data-bkfile],[data-bkcopy],[data-bkpick],[data-bkpaste],[data-driveconnect],[data-drivepull],[data-copylink]");
+    var t = e.target.closest("[data-editlist],[data-check],[data-list],[data-addlist],[data-addhabit],[data-edit],[data-week],[data-emoji],[data-save],[data-del],[data-close],[data-overlay],[data-backup],[data-bkfile],[data-bkcopy],[data-bkpick],[data-bkpaste],[data-driveconnect],[data-drivepull],[data-copylink]");
     if(!t) return;
+
+    if(t.dataset.editlist!==undefined){ var el=data.lists.filter(function(x){return x.id===t.dataset.editlist;})[0]; modal={type:"list",mode:"edit",target:el}; render(); return; }
 
     if(t.dataset.copylink!==undefined){ copyPlain(homeLink(), "リンクをコピーしました。Safariのアドレス欄に貼り付けて開き、共有ボタンから「ホーム画面に追加」してください。"); return; }
     if(t.dataset.driveconnect!==undefined){ connectDrive(); return; }
@@ -480,14 +488,6 @@
     if(t.dataset.del!==undefined){ doDelete(); return; }
     if(t.dataset.close!==undefined){ closeModal(); return; }
     if(t.dataset.overlay!==undefined){ if(e.target===t) closeModal(); return; }
-  });
-
-  // タブのダブルタップで名前編集
-  document.addEventListener("dblclick", function(e){
-    var t = e.target.closest("[data-list]");
-    if(!t) return;
-    var l = data.lists.filter(function(x){return x.id===t.dataset.list;})[0];
-    modal={type:"list",mode:"edit",target:l}; render();
   });
 
   // URLに設定が付いていれば取り込む（ホーム画面アイコン経由の復元）
