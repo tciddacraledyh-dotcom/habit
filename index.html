@@ -42,7 +42,19 @@
     border: none; background: transparent; color: #9aa0ab; cursor: pointer; border-radius: 10px; flex-shrink: 0; }
 
   /* 月ナビ */
-  .navrow { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 16px 0 12px; }
+  .navrow { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 16px 0 12px; position: relative; }
+  .backupbtn { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); width: 40px; height: 40px;
+    border-radius: 12px; border: none; background: #fff; color: #6b7280; cursor: pointer; display: flex;
+    align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(20,30,60,.06); }
+  .bkdesc { font-size: 13px; color: #6b7280; line-height: 1.65; margin-bottom: 20px; }
+  .bkgroup { margin-bottom: 18px; }
+  .bklabel { font-size: 12px; font-weight: 700; color: #9aa0ab; margin-bottom: 8px; letter-spacing: .04em; }
+  .bkbtn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 13px;
+    border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font-weight: 600;
+    font-size: 14px; cursor: pointer; font-family: inherit; margin-bottom: 8px; }
+  .bkbtn.danger { background: #fff; border-color: #f2d4d4; color: #d64545; }
+  .bkarea { width: 100%; min-height: 68px; border: 1px solid var(--line); border-radius: 12px; padding: 10px;
+    font-size: 12px; font-family: inherit; resize: vertical; margin-bottom: 8px; outline: none; color: var(--ink); }
   .navbtn { width: 40px; height: 40px; border-radius: 12px; border: none; background: #fff; color: #6b7280;
     cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(20,30,60,.06); }
   .monthbtn { font-size: 18px; font-weight: 700; letter-spacing: .02em; color: var(--ink);
@@ -151,7 +163,11 @@
     var p = {
       left:'<path d="M15 18l-6-6 6-6"/>', right:'<path d="M9 18l6-6-6-6"/>',
       plus:'<path d="M12 5v14M5 12h14"/>', x:'<path d="M18 6L6 18M6 6l12 12"/>',
-      trash:'<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>'
+      trash:'<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>',
+      download:'<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>',
+      upload:'<path d="M12 21V9M7 14l5-5 5 5M5 3h14"/>',
+      copy:'<path d="M9 9h10v11H9zM5 15V4h11"/>',
+      shield:'<path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6z"/>'
     };
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">'+p[name]+'</svg>';
   }
@@ -179,7 +195,8 @@
     html += '<div class="navrow">'+
       '<button class="navbtn" data-week="-1">'+ico("left")+'</button>'+
       '<button class="monthbtn" data-week="0">'+monthLabel+'</button>'+
-      '<button class="navbtn" data-week="1">'+ico("right")+'</button></div>';
+      '<button class="navbtn" data-week="1">'+ico("right")+'</button>'+
+      '<button class="backupbtn" data-backup="1" aria-label="バックアップ">'+ico("shield")+'</button></div>';
 
     // グリッド
     html += '<div class="gridwrap"><div class="headerrow"><div></div>';
@@ -215,7 +232,73 @@
   }
 
   // ---- モーダル ----
+  function modalRoot(){
+    var wrap = document.getElementById("modalRoot");
+    if(!wrap){ wrap = document.createElement("div"); wrap.id="modalRoot"; document.body.appendChild(wrap); }
+    return wrap;
+  }
+
+  function renderBackup(){
+    var html = '<div class="overlay" data-overlay="1"><div class="sheet">'+
+      '<div class="sheethead"><h3>バックアップ</h3><button class="iconbtn" data-close="1">'+ico("x")+'</button></div>'+
+      '<p class="bkdesc">記録はこの端末に保存されています。ときどき書き出して保管しておくと、Safariのデータを消したときや機種変更のときに元へ戻せます。</p>'+
+      '<div class="bkgroup"><div class="bklabel">書き出して保管する</div>'+
+      '<button class="bkbtn" data-bkfile="1">'+ico("download")+'ファイルに保存</button>'+
+      '<button class="bkbtn" data-bkcopy="1">'+ico("copy")+'テキストをコピー</button></div>'+
+      '<div class="bkgroup"><div class="bklabel">保管したデータから復元する</div>'+
+      '<button class="bkbtn" data-bkpick="1">'+ico("upload")+'ファイルから読み込む</button>'+
+      '<textarea class="bkarea" id="bkArea" placeholder="コピーしたテキストをここに貼り付け"></textarea>'+
+      '<button class="bkbtn danger" data-bkpaste="1">貼り付けたテキストから復元</button></div>'+
+      '<input type="file" id="bkFile" accept="application/json,.json" style="display:none"/>'+
+      '</div></div>';
+    modalRoot().innerHTML = html;
+    document.getElementById("bkFile").addEventListener("change", handleFile);
+  }
+
+  function exportFile(){
+    try {
+      var blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
+      var url = URL.createObjectURL(blob), a = document.createElement("a"), d = new Date();
+      a.href = url; a.download = "check-backup-"+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+".json";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+    } catch(e){ alert("書き出しに失敗しました"); }
+  }
+  function copyText(){
+    var txt = JSON.stringify(data);
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(txt).then(function(){ alert("コピーしました。メモやメールに貼り付けて保管できます。"); }, function(){ fallbackCopy(txt); });
+    } else fallbackCopy(txt);
+  }
+  function fallbackCopy(txt){
+    var ta = document.createElement("textarea"); ta.value = txt; ta.style.position="fixed"; ta.style.opacity="0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); alert("コピーしました。メモやメールに貼り付けて保管できます。"); }
+    catch(e){ alert("コピーできませんでした"); }
+    document.body.removeChild(ta);
+  }
+  function handleFile(e){
+    var f = e.target.files[0]; if(!f) return;
+    var r = new FileReader();
+    r.onload = function(){ applyRestore(r.result); };
+    r.readAsText(f);
+  }
+  function importFromTextarea(){
+    var el = document.getElementById("bkArea"); var v = el ? el.value.trim() : "";
+    if(!v){ alert("復元するテキストを貼り付けてください"); return; }
+    applyRestore(v);
+  }
+  function applyRestore(text){
+    var parsed;
+    try { parsed = JSON.parse(text); } catch(e){ alert("データの形式が正しくないため復元できませんでした"); return; }
+    if(!parsed || !parsed.lists || !parsed.lists.length){ alert("バックアップの中身が見つかりませんでした"); return; }
+    if(!confirm("いまの記録を、このバックアップの内容で置き換えます。よろしいですか？")) return;
+    data = parsed; if(!data.activeListId) data.activeListId = data.lists[0].id;
+    save(); closeModal(); render(); alert("復元しました。");
+  }
+
   function renderModal(){
+    if(modal.type==="backup"){ renderBackup(); return; }
     var isList = modal.type==="list";
     var target = modal.target;
     var title = (isList?"リスト":"項目")+"を"+(modal.mode==="add"?"追加":"編集");
@@ -238,9 +321,7 @@
     if(canDelete) html += '<button class="delbtn" data-del="1">'+ico("trash")+'削除</button>';
     html += '<button class="savebtn" data-save="1">'+(modal.mode==="add"?"追加する":"保存する")+'</button></div></div></div>';
 
-    var wrap = document.getElementById("modalRoot");
-    if(!wrap){ wrap = document.createElement("div"); wrap.id="modalRoot"; document.body.appendChild(wrap); }
-    wrap.innerHTML = html;
+    modalRoot().innerHTML = html;
 
     var input = document.getElementById("mName");
     input.addEventListener("input", function(){ modal.name = input.value; });
@@ -275,8 +356,14 @@
 
   // ---- イベント（委譲） ----
   document.addEventListener("click", function(e){
-    var t = e.target.closest("[data-check],[data-list],[data-addlist],[data-addhabit],[data-edit],[data-week],[data-emoji],[data-save],[data-del],[data-close],[data-overlay]");
+    var t = e.target.closest("[data-check],[data-list],[data-addlist],[data-addhabit],[data-edit],[data-week],[data-emoji],[data-save],[data-del],[data-close],[data-overlay],[data-backup],[data-bkfile],[data-bkcopy],[data-bkpick],[data-bkpaste]");
     if(!t) return;
+
+    if(t.dataset.backup!==undefined){ modal={type:"backup"}; render(); return; }
+    if(t.dataset.bkfile!==undefined){ exportFile(); return; }
+    if(t.dataset.bkcopy!==undefined){ copyText(); return; }
+    if(t.dataset.bkpick!==undefined){ var fi=document.getElementById("bkFile"); if(fi) fi.click(); return; }
+    if(t.dataset.bkpaste!==undefined){ importFromTextarea(); return; }
 
     if(t.dataset.check!==undefined){
       var list=activeList(); var h=list.habits.filter(function(x){return x.id===t.dataset.check;})[0];
@@ -290,7 +377,8 @@
     if(t.dataset.emoji!==undefined){ modal.emoji=t.dataset.emoji; renderModal(); return; }
     if(t.dataset.save!==undefined){ doSave(); return; }
     if(t.dataset.del!==undefined){ doDelete(); return; }
-    if(t.dataset.close!==undefined || t.dataset.overlay!==undefined){ closeModal(); return; }
+    if(t.dataset.close!==undefined){ closeModal(); return; }
+    if(t.dataset.overlay!==undefined){ if(e.target===t) closeModal(); return; }
   });
 
   // タブのダブルタップで名前編集
