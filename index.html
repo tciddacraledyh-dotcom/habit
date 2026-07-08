@@ -55,6 +55,14 @@
   .bkbtn.danger { background: #fff; border-color: #f2d4d4; color: #d64545; }
   .bkarea { width: 100%; min-height: 68px; border: 1px solid var(--line); border-radius: 12px; padding: 10px;
     font-size: 12px; font-family: inherit; resize: vertical; margin-bottom: 8px; outline: none; color: var(--ink); }
+  .bksub { font-size: 12px; color: #8a8f99; line-height: 1.6; margin-bottom: 12px; }
+  .bkinput { width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 12px; font-size: 14px;
+    font-family: inherit; margin-bottom: 8px; outline: none; color: var(--ink); background: #fff; }
+  .bkinput:focus { border-color: var(--blue); }
+  .bkbtn.primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .syncrow { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px;
+    color: #9aa0ab; padding: 0 0 10px; }
+  .syncdot { width: 6px; height: 6px; border-radius: 50%; background: #34c759; flex-shrink: 0; }
   .navbtn { width: 40px; height: 40px; border-radius: 12px; border: none; background: #fff; color: #6b7280;
     cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(20,30,60,.06); }
   .monthbtn { font-size: 18px; font-weight: 700; letter-spacing: .02em; color: var(--ink);
@@ -123,6 +131,10 @@
   "use strict";
 
   var STORE_KEY = "habit-tracker-v1";
+  var DRIVE_CFG_KEY = "habit-drive-cfg";
+  var DRIVE_FILE = "habit_data.json";
+  var syncText = "";
+  var pushTimer = null;
   var WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"];
   var EMOJI_SET = ["💊","🩺","💉","🌡️","💪","🏃","📕","🥤","🍰","🐶","🍺","📖","🧘","☕","🥗","🦷","🚿","🌙","☀️","✍️","🎸","💧","🍎","⏰"];
 
@@ -154,7 +166,7 @@
       else data = defaultData();
     } catch(e){ data = defaultData(); }
   }
-  function save(){ try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch(e){} }
+  function save(){ try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch(e){} schedulePush(); }
   function activeList(){ for(var i=0;i<data.lists.length;i++){ if(data.lists[i].id===data.activeListId) return data.lists[i]; } return data.lists[0]; }
 
   // ---- SVG ----
@@ -198,6 +210,10 @@
       '<button class="navbtn" data-week="1">'+ico("right")+'</button>'+
       '<button class="backupbtn" data-backup="1" aria-label="バックアップ">'+ico("shield")+'</button></div>';
 
+    if(driveCfg().url && driveCfg().key){
+      html += '<div class="syncrow"><span class="syncdot"></span><span id="syncStatus">'+esc(syncText||"同期の準備中…")+'</span></div>';
+    }
+
     // グリッド
     html += '<div class="gridwrap"><div class="headerrow"><div></div>';
     days.forEach(function(d,i){
@@ -239,15 +255,23 @@
   }
 
   function renderBackup(){
+    var c = driveCfg();
+    var connected = !!(c.url && c.key);
     var html = '<div class="overlay" data-overlay="1"><div class="sheet">'+
-      '<div class="sheethead"><h3>バックアップ</h3><button class="iconbtn" data-close="1">'+ico("x")+'</button></div>'+
-      '<p class="bkdesc">記録はこの端末に保存されています。ときどき書き出して保管しておくと、Safariのデータを消したときや機種変更のときに元へ戻せます。</p>'+
-      '<div class="bkgroup"><div class="bklabel">書き出して保管する</div>'+
+      '<div class="sheethead"><h3>保存と同期</h3><button class="iconbtn" data-close="1">'+ico("x")+'</button></div>'+
+      '<div class="bkgroup"><div class="bklabel">GOOGLE DRIVE 自動保存'+(connected?' ・ つないでいます':'')+'</div>'+
+      '<p class="bksub">つなぐと、チェックするたびに自動でDriveに保存されます。手動の操作は要りません。機種変更や別の端末でも、同じURLと合言葉を入れれば記録がそのまま出てきます。</p>'+
+      '<input class="bkinput" id="dvUrl" placeholder="ウェブアプリのURL" value="'+esc(c.url||"")+'"/>'+
+      '<input class="bkinput" id="dvKey" placeholder="合言葉" value="'+esc(c.key||"")+'"/>'+
+      '<button class="bkbtn primary" data-driveconnect="1">'+ico("shield")+(connected?'つなぎ直す':'保存してつなぐ')+'</button>'+
+      (connected ? '<button class="bkbtn" data-drivepull="1">'+ico("download")+'Driveから今すぐ読み込む</button>' : '')+
+      '</div>'+
+      '<div class="bkgroup"><div class="bklabel">ファイルで手元に残す（任意）</div>'+
+      '<p class="bksub">Drive同期をしない場合の予備です。ふだんは触らなくて大丈夫です。</p>'+
       '<button class="bkbtn" data-bkfile="1">'+ico("download")+'ファイルに保存</button>'+
-      '<button class="bkbtn" data-bkcopy="1">'+ico("copy")+'テキストをコピー</button></div>'+
-      '<div class="bkgroup"><div class="bklabel">保管したデータから復元する</div>'+
-      '<button class="bkbtn" data-bkpick="1">'+ico("upload")+'ファイルから読み込む</button>'+
-      '<textarea class="bkarea" id="bkArea" placeholder="コピーしたテキストをここに貼り付け"></textarea>'+
+      '<button class="bkbtn" data-bkcopy="1">'+ico("copy")+'テキストをコピー</button>'+
+      '<button class="bkbtn" data-bkpick="1">'+ico("upload")+'ファイルから復元</button>'+
+      '<textarea class="bkarea" id="bkArea" placeholder="コピーしたテキストから戻すときは、ここに貼り付け"></textarea>'+
       '<button class="bkbtn danger" data-bkpaste="1">貼り付けたテキストから復元</button></div>'+
       '<input type="file" id="bkFile" accept="application/json,.json" style="display:none"/>'+
       '</div></div>';
@@ -295,6 +319,58 @@
     if(!confirm("いまの記録を、このバックアップの内容で置き換えます。よろしいですか？")) return;
     data = parsed; if(!data.activeListId) data.activeListId = data.lists[0].id;
     save(); closeModal(); render(); alert("復元しました。");
+  }
+
+  // ---- Google Drive 自動同期 ----
+  function driveCfg(){ try { return JSON.parse(localStorage.getItem(DRIVE_CFG_KEY) || "{}"); } catch(e){ return {}; } }
+  function saveDriveCfg(url, key){ localStorage.setItem(DRIVE_CFG_KEY, JSON.stringify({ url: url, key: key })); }
+  function nowHM(){ var d = new Date(); return pad(d.getHours())+":"+pad(d.getMinutes()); }
+  function setSync(t){ syncText = t; var el = document.getElementById("syncStatus"); if(el) el.textContent = t; }
+
+  function schedulePush(){
+    var c = driveCfg(); if(!c.url || !c.key) return;
+    setSync("保存中…");
+    if(pushTimer) clearTimeout(pushTimer);
+    pushTimer = setTimeout(pushDrive, 1200);
+  }
+  function pushDrive(){
+    var c = driveCfg(); if(!c.url || !c.key) return;
+    fetch(c.url, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ key: c.key, file: DRIVE_FILE, data: data })
+    }).then(function(r){ return r.json(); }).then(function(j){
+      if(j && j.ok) setSync("同期済み "+nowHM());
+      else if(j && j.error==="auth") setSync("合言葉エラー");
+      else setSync("同期エラー");
+    }).catch(function(){ setSync("オフライン"); });
+  }
+  function pullDrive(cb){
+    var c = driveCfg(); if(!c.url || !c.key){ if(cb) cb(); return; }
+    setSync("読み込み中…");
+    fetch(c.url + "?key=" + encodeURIComponent(c.key) + "&file=" + encodeURIComponent(DRIVE_FILE))
+      .then(function(r){ return r.json(); }).then(function(j){
+        if(j && j.lists && j.lists.length){
+          data = j; if(!data.activeListId) data.activeListId = data.lists[0].id;
+          try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch(e){}
+          render(); setSync("同期済み "+nowHM());
+        } else if(j && j.empty){
+          // Drive側がまだ空 → 今の端末のデータを初回アップロード
+          setSync("同期中…"); pushDrive();
+        } else if(j && j.error==="auth"){
+          setSync("合言葉エラー");
+        } else { setSync("同期済み "+nowHM()); }
+        if(cb) cb();
+      }).catch(function(){ setSync("オフライン"); if(cb) cb(); });
+  }
+  function connectDrive(){
+    var url = (document.getElementById("dvUrl")||{}).value || "";
+    var key = (document.getElementById("dvKey")||{}).value || "";
+    url = url.trim(); key = key.trim();
+    if(!url || !key){ alert("URLと合言葉の両方を入れてください"); return; }
+    saveDriveCfg(url, key);
+    // つないだ直後は、Drive側に既存データがあればそれを取り込む
+    pullDrive(function(){ closeModal(); render(); });
   }
 
   function renderModal(){
@@ -356,9 +432,11 @@
 
   // ---- イベント（委譲） ----
   document.addEventListener("click", function(e){
-    var t = e.target.closest("[data-check],[data-list],[data-addlist],[data-addhabit],[data-edit],[data-week],[data-emoji],[data-save],[data-del],[data-close],[data-overlay],[data-backup],[data-bkfile],[data-bkcopy],[data-bkpick],[data-bkpaste]");
+    var t = e.target.closest("[data-check],[data-list],[data-addlist],[data-addhabit],[data-edit],[data-week],[data-emoji],[data-save],[data-del],[data-close],[data-overlay],[data-backup],[data-bkfile],[data-bkcopy],[data-bkpick],[data-bkpaste],[data-driveconnect],[data-drivepull]");
     if(!t) return;
 
+    if(t.dataset.driveconnect!==undefined){ connectDrive(); return; }
+    if(t.dataset.drivepull!==undefined){ pullDrive(function(){ closeModal(); render(); }); return; }
     if(t.dataset.backup!==undefined){ modal={type:"backup"}; render(); return; }
     if(t.dataset.bkfile!==undefined){ exportFile(); return; }
     if(t.dataset.bkcopy!==undefined){ copyText(); return; }
@@ -390,6 +468,7 @@
   });
 
   load(); render();
+  if(driveCfg().url && driveCfg().key){ setSync("同期の準備中…"); pullDrive(); }
 })();
 </script>
 </body>
