@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+<title>チェックカレンダー</title>
+
+<!-- iOS ホーム画面アプリ用 -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="チェック" />
+<meta name="theme-color" content="#2f6fed" />
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Crect width='180' height='180' rx='40' fill='%232f6fed'/%3E%3Cpath d='M52 92 l24 24 l52 -56' fill='none' stroke='white' stroke-width='16' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+
+<style>
+  :root {
+    --ink: #1c2333;
+    --blue: #2f6fed;
+    --bg: #f6f7f9;
+    --line: #eceef1;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
+  html, body { background: var(--bg); }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    color: var(--ink);
+    min-height: 100vh;
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+    -webkit-user-select: none; user-select: none;
+  }
+  #app { max-width: 640px; margin: 0 auto; position: relative; }
+
+  /* タブ */
+  .tabbar { background: #fff; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; padding-top: env(safe-area-inset-top); }
+  .tabscroll { display: flex; gap: 4px; padding: 10px 10px 0; overflow-x: auto; }
+  .tabscroll::-webkit-scrollbar { display: none; }
+  .tab { display: flex; align-items: center; gap: 6px; padding: 9px 14px; border: none; background: transparent;
+    border-radius: 10px 10px 0 0; cursor: pointer; white-space: nowrap; color: #8a8f99; font-weight: 600; font-size: 14px; font-family: inherit; }
+  .tab.active { background: var(--bg); color: var(--ink); }
+  .tab .em { font-size: 16px; }
+  .tabadd { display: flex; align-items: center; justify-content: center; width: 38px; height: 38px;
+    border: none; background: transparent; color: #9aa0ab; cursor: pointer; border-radius: 10px; flex-shrink: 0; }
+
+  /* 月ナビ */
+  .navrow { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 16px 0 12px; }
+  .navbtn { width: 40px; height: 40px; border-radius: 12px; border: none; background: #fff; color: #6b7280;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(20,30,60,.06); }
+  .monthbtn { font-size: 18px; font-weight: 700; letter-spacing: .02em; color: var(--ink);
+    background: transparent; border: none; cursor: pointer; padding: 8px 16px; min-width: 150px; font-family: inherit; }
+
+  /* グリッド */
+  .gridwrap { background: #fff; margin: 0 10px; border-radius: 16px; box-shadow: 0 1px 4px rgba(20,30,60,.05); overflow: hidden; }
+  .headerrow, .habitrow { display: grid; grid-template-columns: 104px repeat(7, 1fr); border-bottom: 1px solid var(--line); }
+  .headerrow { align-items: center; }
+  .dayhead { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 0 8px; }
+  .wd { font-size: 11px; font-weight: 600; }
+  .daynum { font-size: 15px; font-weight: 600; color: #3a4152; width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center; }
+  .daynum.today { background: var(--blue); color: #fff; border-radius: 50%; }
+
+  .habitrow { align-items: stretch; }
+  .habitlabel { display: flex; align-items: center; gap: 7px; padding: 0 8px; height: 52px; border: none;
+    border-right: 1px solid var(--line); background: transparent; cursor: pointer; text-align: left; overflow: hidden; font-family: inherit; }
+  .habitlabel .em { font-size: 17px; flex-shrink: 0; }
+  .habitname { font-size: 14px; font-weight: 600; color: #2a3040; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cell { border-right: 1px solid var(--line); background: transparent; cursor: pointer; display: flex;
+    align-items: center; justify-content: center; min-height: 52px; border-top: none; border-bottom: none; border-left: none; }
+  .cell svg { width: 22px; height: 22px; }
+  .cell.on svg { animation: pop .22s cubic-bezier(.34,1.56,.64,1); }
+
+  .empty { padding: 48px 24px; text-align: center; }
+  .empty h2 { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+  .empty p { font-size: 13px; color: #8a8f99; }
+
+  .fab { position: fixed; bottom: calc(24px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
+    width: 60px; height: 60px; border-radius: 50%; background: var(--blue); color: #fff; border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 20px rgba(47,111,237,.4); z-index: 10; }
+
+  /* モーダル */
+  .overlay { position: fixed; inset: 0; background: rgba(15,20,35,.4); display: flex; align-items: flex-end;
+    justify-content: center; z-index: 20; }
+  .sheet { background: #fff; width: 100%; max-width: 640px; border-radius: 20px 20px 0 0;
+    padding: 18px 18px calc(28px + env(safe-area-inset-bottom)); animation: slideUp .22s ease; max-height: 88vh; overflow-y: auto; }
+  .sheethead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .sheethead h3 { font-size: 16px; font-weight: 700; }
+  .iconbtn { border: none; background: transparent; color: #9aa0ab; cursor: pointer; padding: 4px; }
+  .pickedrow { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+  .pickedemoji { width: 52px; height: 52px; border-radius: 14px; background: var(--bg); display: flex;
+    align-items: center; justify-content: center; font-size: 26px; flex-shrink: 0; }
+  .nameinput { flex: 1; border: none; border-bottom: 2px solid var(--line); font-size: 17px; padding: 8px 2px;
+    outline: none; background: transparent; font-weight: 600; font-family: inherit; color: var(--ink); }
+  .emojigrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-bottom: 22px; }
+  .emojicell { aspect-ratio: 1; border: 1px solid transparent; background: var(--bg); border-radius: 12px;
+    font-size: 22px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .emojicell.sel { border: 2px solid var(--blue); background: #eaf1ff; }
+  .actions { display: flex; gap: 10px; }
+  .delbtn { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 14px 18px; border-radius: 14px;
+    border: none; background: #fdeaea; color: #d64545; font-weight: 700; font-size: 15px; cursor: pointer; font-family: inherit; }
+  .savebtn { flex: 1; padding: 14px; border-radius: 14px; border: none; background: var(--blue); color: #fff;
+    font-weight: 700; font-size: 15px; cursor: pointer; font-family: inherit; }
+
+  @keyframes slideUp { from { transform: translateY(24px); opacity: .4; } to { transform: translateY(0); opacity: 1; } }
+  @keyframes pop { 0% { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.15); } 100% { transform: scale(1); opacity: 1; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var STORE_KEY = "habit-tracker-v1";
+  var WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"];
+  var EMOJI_SET = ["💊","🩺","💉","🌡️","💪","🏃","📕","🥤","🍰","🐶","🍺","📖","🧘","☕","🥗","🦷","🚿","🌙","☀️","✍️","🎸","💧","🍎","⏰"];
+
+  // ---- 日付 ----
+  function pad(n){ return ("0"+n).slice(-2); }
+  function toKey(d){ return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+  function startOfWeek(d){ var x=new Date(d); var day=(x.getDay()+6)%7; x.setDate(x.getDate()-day); x.setHours(0,0,0,0); return x; }
+  function addDays(d,n){ var x=new Date(d); x.setDate(x.getDate()+n); return x; }
+  function sameDay(a,b){ return toKey(a)===toKey(b); }
+  function uid(){ return Math.random().toString(36).slice(2,9); }
+
+  // ---- 状態 ----
+  var data, weekStart = startOfWeek(new Date()), modal = null;
+
+  function defaultData(){
+    var lid = uid();
+    return {
+      lists: [{ id: lid, name: "お薬・習慣", emoji: "💊", habits: [
+        { id: uid(), name: "朝の薬", emoji: "💊", checks: {} },
+        { id: uid(), name: "夜の薬", emoji: "🌙", checks: {} }
+      ]}],
+      activeListId: lid
+    };
+  }
+  function load(){
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (raw){ data = JSON.parse(raw); if(!data.activeListId && data.lists[0]) data.activeListId = data.lists[0].id; }
+      else data = defaultData();
+    } catch(e){ data = defaultData(); }
+  }
+  function save(){ try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch(e){} }
+  function activeList(){ for(var i=0;i<data.lists.length;i++){ if(data.lists[i].id===data.activeListId) return data.lists[i]; } return data.lists[0]; }
+
+  // ---- SVG ----
+  var CHECK = '<svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7" stroke="#2f6fed" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  function ico(name){
+    var p = {
+      left:'<path d="M15 18l-6-6 6-6"/>', right:'<path d="M9 18l6-6-6-6"/>',
+      plus:'<path d="M12 5v14M5 12h14"/>', x:'<path d="M18 6L6 18M6 6l12 12"/>',
+      trash:'<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>'
+    };
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">'+p[name]+'</svg>';
+  }
+  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+  // ---- 描画 ----
+  function render(){
+    var list = activeList();
+    var days = []; for(var i=0;i<7;i++) days.push(addDays(weekStart,i));
+    var today = new Date();
+    var monthLabel = weekStart.getFullYear()+"年"+(weekStart.getMonth()+1)+"月";
+
+    var html = '';
+
+    // タブ
+    html += '<div class="tabbar"><div class="tabscroll">';
+    data.lists.forEach(function(l){
+      html += '<button class="tab'+(l.id===list.id?' active':'')+'" data-list="'+l.id+'">'+
+        '<span class="em">'+l.emoji+'</span><span>'+esc(l.name)+'</span></button>';
+    });
+    html += '<button class="tabadd" data-addlist="1">'+ico("plus")+'</button>';
+    html += '</div></div>';
+
+    // 月ナビ
+    html += '<div class="navrow">'+
+      '<button class="navbtn" data-week="-1">'+ico("left")+'</button>'+
+      '<button class="monthbtn" data-week="0">'+monthLabel+'</button>'+
+      '<button class="navbtn" data-week="1">'+ico("right")+'</button></div>';
+
+    // グリッド
+    html += '<div class="gridwrap"><div class="headerrow"><div></div>';
+    days.forEach(function(d,i){
+      var col = i===6 ? '#e05656' : i===5 ? '#4a7fd6' : '#8a8a92';
+      var td = sameDay(d,today) ? ' today' : '';
+      html += '<div class="dayhead"><span class="wd" style="color:'+col+'">'+WEEKDAYS[i]+'</span>'+
+        '<span class="daynum'+td+'">'+d.getDate()+'</span></div>';
+    });
+    html += '</div>';
+
+    if(list.habits.length===0){
+      html += '<div class="empty"><h2>項目を追加しよう</h2><p>下の＋ボタンから、毎日チェックしたいことを登録できます</p></div>';
+    } else {
+      list.habits.forEach(function(h){
+        html += '<div class="habitrow"><button class="habitlabel" data-edit="'+h.id+'">'+
+          '<span class="em">'+h.emoji+'</span><span class="habitname">'+esc(h.name)+'</span></button>';
+        days.forEach(function(d){
+          var key = toKey(d); var on = !!h.checks[key];
+          html += '<button class="cell'+(on?' on':'')+'" data-check="'+h.id+'" data-date="'+key+'">'+(on?CHECK:'')+'</button>';
+        });
+        html += '</div>';
+      });
+    }
+    html += '</div>';
+
+    // FAB
+    html += '<button class="fab" data-addhabit="1">'+
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" width="28" height="28"><path d="M12 5v14M5 12h14"/></svg></button>';
+
+    document.getElementById("app").innerHTML = html;
+    if(modal) renderModal();
+  }
+
+  // ---- モーダル ----
+  function renderModal(){
+    var isList = modal.type==="list";
+    var target = modal.target;
+    var title = (isList?"リスト":"項目")+"を"+(modal.mode==="add"?"追加":"編集");
+    var curName = target ? target.name : "";
+    var curEmoji = target ? target.emoji : (isList?"📋":"💊");
+    modal.name = modal.name!==undefined ? modal.name : curName;
+    modal.emoji = modal.emoji!==undefined ? modal.emoji : curEmoji;
+
+    var canDelete = modal.mode==="edit" && (!isList || data.lists.length>1);
+
+    var html = '<div class="overlay" data-overlay="1"><div class="sheet">'+
+      '<div class="sheethead"><h3>'+title+'</h3><button class="iconbtn" data-close="1">'+ico("x")+'</button></div>'+
+      '<div class="pickedrow"><div class="pickedemoji">'+modal.emoji+'</div>'+
+      '<input class="nameinput" id="mName" placeholder="'+(isList?"リスト名":"項目の名前（例：朝の薬）")+'" value="'+esc(modal.name)+'"/></div>'+
+      '<div class="emojigrid">';
+    EMOJI_SET.forEach(function(e){
+      html += '<button class="emojicell'+(e===modal.emoji?' sel':'')+'" data-emoji="'+e+'">'+e+'</button>';
+    });
+    html += '</div><div class="actions">';
+    if(canDelete) html += '<button class="delbtn" data-del="1">'+ico("trash")+'削除</button>';
+    html += '<button class="savebtn" data-save="1">'+(modal.mode==="add"?"追加する":"保存する")+'</button></div></div></div>';
+
+    var wrap = document.getElementById("modalRoot");
+    if(!wrap){ wrap = document.createElement("div"); wrap.id="modalRoot"; document.body.appendChild(wrap); }
+    wrap.innerHTML = html;
+
+    var input = document.getElementById("mName");
+    input.addEventListener("input", function(){ modal.name = input.value; });
+    input.addEventListener("keydown", function(e){ if(e.key==="Enter") doSave(); });
+    if(modal.mode==="add") setTimeout(function(){ input.focus(); }, 50);
+  }
+  function closeModal(){ modal=null; var w=document.getElementById("modalRoot"); if(w) w.innerHTML=""; }
+
+  function doSave(){
+    var name = (modal.name||"").trim(); if(!name) return;
+    if(modal.type==="list"){
+      if(modal.mode==="add"){ var nl={id:uid(),name:name,emoji:modal.emoji,habits:[]}; data.lists.push(nl); data.activeListId=nl.id; }
+      else { modal.target.name=name; modal.target.emoji=modal.emoji; }
+    } else {
+      var list=activeList();
+      if(modal.mode==="add"){ list.habits.push({id:uid(),name:name,emoji:modal.emoji,checks:{}}); }
+      else { modal.target.name=name; modal.target.emoji=modal.emoji; }
+    }
+    save(); closeModal(); render();
+  }
+  function doDelete(){
+    if(modal.type==="list"){
+      if(data.lists.length<=1) return;
+      data.lists = data.lists.filter(function(l){ return l.id!==modal.target.id; });
+      if(data.activeListId===modal.target.id) data.activeListId=data.lists[0].id;
+    } else {
+      var list=activeList();
+      list.habits = list.habits.filter(function(h){ return h.id!==modal.target.id; });
+    }
+    save(); closeModal(); render();
+  }
+
+  // ---- イベント（委譲） ----
+  document.addEventListener("click", function(e){
+    var t = e.target.closest("[data-check],[data-list],[data-addlist],[data-addhabit],[data-edit],[data-week],[data-emoji],[data-save],[data-del],[data-close],[data-overlay]");
+    if(!t) return;
+
+    if(t.dataset.check!==undefined){
+      var list=activeList(); var h=list.habits.filter(function(x){return x.id===t.dataset.check;})[0];
+      var k=t.dataset.date; if(h.checks[k]) delete h.checks[k]; else h.checks[k]=true; save(); render(); return;
+    }
+    if(t.dataset.list!==undefined){ data.activeListId=t.dataset.list; save(); render(); return; }
+    if(t.dataset.addlist!==undefined){ modal={type:"list",mode:"add"}; render(); return; }
+    if(t.dataset.addhabit!==undefined){ modal={type:"habit",mode:"add"}; render(); return; }
+    if(t.dataset.edit!==undefined){ var l=activeList(); var hb=l.habits.filter(function(x){return x.id===t.dataset.edit;})[0]; modal={type:"habit",mode:"edit",target:hb}; render(); return; }
+    if(t.dataset.week!==undefined){ var w=parseInt(t.dataset.week,10); weekStart = w===0 ? startOfWeek(new Date()) : addDays(weekStart, w*7); render(); return; }
+    if(t.dataset.emoji!==undefined){ modal.emoji=t.dataset.emoji; renderModal(); return; }
+    if(t.dataset.save!==undefined){ doSave(); return; }
+    if(t.dataset.del!==undefined){ doDelete(); return; }
+    if(t.dataset.close!==undefined || t.dataset.overlay!==undefined){ closeModal(); return; }
+  });
+
+  // タブのダブルタップで名前編集
+  document.addEventListener("dblclick", function(e){
+    var t = e.target.closest("[data-list]");
+    if(!t) return;
+    var l = data.lists.filter(function(x){return x.id===t.dataset.list;})[0];
+    modal={type:"list",mode:"edit",target:l}; render();
+  });
+
+  load(); render();
+})();
+</script>
+</body>
+</html>
