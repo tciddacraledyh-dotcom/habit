@@ -63,6 +63,9 @@
   .syncrow { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px;
     color: #9aa0ab; padding: 0 0 10px; }
   .syncdot { width: 6px; height: 6px; border-radius: 50%; background: #34c759; flex-shrink: 0; }
+  .homebox { margin-top: 14px; padding: 12px; background: #eef4ff; border: 1px solid #d6e4ff; border-radius: 12px; }
+  .homebox .bklabel { color: var(--blue); }
+  .homebox .bkbtn { margin-bottom: 0; }
   .navbtn { width: 40px; height: 40px; border-radius: 12px; border: none; background: #fff; color: #6b7280;
     cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(20,30,60,.06); }
   .monthbtn { font-size: 18px; font-weight: 700; letter-spacing: .02em; color: var(--ink);
@@ -265,6 +268,9 @@
       '<input class="bkinput" id="dvKey" placeholder="合言葉" value="'+esc(c.key||"")+'"/>'+
       '<button class="bkbtn primary" data-driveconnect="1">'+ico("shield")+(connected?'つなぎ直す':'保存してつなぐ')+'</button>'+
       (connected ? '<button class="bkbtn" data-drivepull="1">'+ico("download")+'Driveから今すぐ読み込む</button>' : '')+
+      (connected ? '<div class="homebox"><div class="bklabel">設定を消えないようにする（大事）</div>'+
+        '<p class="bksub">下のボタンでリンクをコピーし、Safariのアドレス欄に貼って開いて「ホーム画面に追加」してください。今あるアイコンはこの新しいものに置き換えます。以後は設定が消えても自動で戻ります。</p>'+
+        '<button class="bkbtn primary" data-copylink="1">'+ico("copy")+'ホーム画面用リンクをコピー</button></div>' : '')+
       '</div>'+
       '<div class="bkgroup"><div class="bklabel">ファイルで手元に残す（任意）</div>'+
       '<p class="bksub">Drive同期をしない場合の予備です。ふだんは触らなくて大丈夫です。</p>'+
@@ -373,6 +379,22 @@
     pullDrive(function(){ closeModal(); render(); });
   }
 
+  function copyPlain(txt, msg){
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(txt).then(function(){ alert(msg); }, function(){ fallbackCopyMsg(txt, msg); });
+    } else fallbackCopyMsg(txt, msg);
+  }
+  function fallbackCopyMsg(txt, msg){
+    var ta = document.createElement("textarea"); ta.value = txt; ta.style.position="fixed"; ta.style.opacity="0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); alert(msg); } catch(e){ alert("コピーできませんでした"); }
+    document.body.removeChild(ta);
+  }
+  function homeLink(){
+    var c = driveCfg();
+    return location.origin + location.pathname + "?s=" + encodeURIComponent(c.url) + "&k=" + encodeURIComponent(c.key);
+  }
+
   function renderModal(){
     if(modal.type==="backup"){ renderBackup(); return; }
     var isList = modal.type==="list";
@@ -432,9 +454,10 @@
 
   // ---- イベント（委譲） ----
   document.addEventListener("click", function(e){
-    var t = e.target.closest("[data-check],[data-list],[data-addlist],[data-addhabit],[data-edit],[data-week],[data-emoji],[data-save],[data-del],[data-close],[data-overlay],[data-backup],[data-bkfile],[data-bkcopy],[data-bkpick],[data-bkpaste],[data-driveconnect],[data-drivepull]");
+    var t = e.target.closest("[data-check],[data-list],[data-addlist],[data-addhabit],[data-edit],[data-week],[data-emoji],[data-save],[data-del],[data-close],[data-overlay],[data-backup],[data-bkfile],[data-bkcopy],[data-bkpick],[data-bkpaste],[data-driveconnect],[data-drivepull],[data-copylink]");
     if(!t) return;
 
+    if(t.dataset.copylink!==undefined){ copyPlain(homeLink(), "リンクをコピーしました。Safariのアドレス欄に貼り付けて開き、共有ボタンから「ホーム画面に追加」してください。"); return; }
     if(t.dataset.driveconnect!==undefined){ connectDrive(); return; }
     if(t.dataset.drivepull!==undefined){ pullDrive(function(){ closeModal(); render(); }); return; }
     if(t.dataset.backup!==undefined){ modal={type:"backup"}; render(); return; }
@@ -466,6 +489,13 @@
     var l = data.lists.filter(function(x){return x.id===t.dataset.list;})[0];
     modal={type:"list",mode:"edit",target:l}; render();
   });
+
+  // URLに設定が付いていれば取り込む（ホーム画面アイコン経由の復元）
+  try {
+    var _p = new URLSearchParams(location.search);
+    var _s = _p.get("s"), _k = _p.get("k");
+    if(_s && _k){ saveDriveCfg(_s.trim(), _k.trim()); }
+  } catch(e){}
 
   load(); render();
   if(driveCfg().url && driveCfg().key){ setSync("同期の準備中…"); pullDrive(); }
