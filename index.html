@@ -84,10 +84,11 @@
   .daynum.today { background: var(--blue); color: #fff; border-radius: 50%; }
 
   .habitrow { align-items: stretch; }
-  .habitlabel { display: flex; align-items: center; gap: 7px; padding: 0 8px; height: 52px; border: none;
-    border-right: 1px solid var(--line); background: transparent; cursor: pointer; text-align: left; overflow: hidden; font-family: inherit; }
+  .habitlabel { display: flex; align-items: center; gap: 7px; padding: 7px 10px; min-height: 52px; border: none;
+    border-right: 1px solid var(--line); background: transparent; cursor: pointer; text-align: left; font-family: inherit; }
   .habitlabel .em { font-size: 17px; flex-shrink: 0; }
-  .habitname { font-size: 14px; font-weight: 600; color: #2a3040; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .habitname { font-size: 14px; font-weight: 600; color: #2a3040; line-height: 1.35;
+    overflow-wrap: anywhere; word-break: break-word; }
   .cell { border-right: 1px solid var(--line); background: transparent; cursor: pointer; display: flex;
     align-items: center; justify-content: center; min-height: 52px; border-top: none; border-bottom: none; border-left: none; }
   .cell svg { width: 22px; height: 22px; }
@@ -140,6 +141,7 @@
   var DRIVE_FILE = "habit_data.json";
   var syncText = "";
   var pushTimer = null;
+  var userTouched = false;
   var WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"];
   var EMOJI_SET = ["💊","🩺","💉","🌡️","💪","🏃","📕","🥤","🍰","🐶","🍺","📖","🧘","☕","🥗","🦷","🚿","🌙","☀️","✍️","🎸","💧","🍎","⏰"];
 
@@ -171,7 +173,7 @@
       else data = defaultData();
     } catch(e){ data = defaultData(); }
   }
-  function save(){ try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch(e){} schedulePush(); }
+  function save(){ userTouched = true; try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch(e){} schedulePush(); }
   function activeList(){ for(var i=0;i<data.lists.length;i++){ if(data.lists[i].id===data.activeListId) return data.lists[i]; } return data.lists[0]; }
 
   // ---- SVG ----
@@ -205,7 +207,7 @@
     data.lists.forEach(function(l){
       var isActive = l.id===list.id;
       html += '<button class="tab'+(isActive?' active':'')+'" data-list="'+l.id+'">'+
-        '<span class="em">'+l.emoji+'</span><span>'+esc(l.name)+'</span>'+
+        '<span>'+esc(l.name)+'</span>'+
         (isActive ? '<span class="tabedit" data-editlist="'+l.id+'">'+ico("pencil")+'</span>' : '')+
         '</button>';
     });
@@ -238,7 +240,7 @@
     } else {
       list.habits.forEach(function(h){
         html += '<div class="habitrow"><button class="habitlabel" data-edit="'+h.id+'">'+
-          '<span class="em">'+h.emoji+'</span><span class="habitname">'+esc(h.name)+'</span></button>';
+          '<span class="habitname">'+esc(h.name)+'</span></button>';
         days.forEach(function(d){
           var key = toKey(d); var on = !!h.checks[key];
           html += '<button class="cell'+(on?' on':'')+'" data-check="'+h.id+'" data-date="'+key+'">'+(on?CHECK:'')+'</button>';
@@ -341,9 +343,8 @@
 
   function schedulePush(){
     var c = driveCfg(); if(!c.url || !c.key) return;
-    setSync("保存中…");
     if(pushTimer) clearTimeout(pushTimer);
-    pushTimer = setTimeout(pushDrive, 1200);
+    pushTimer = setTimeout(pushDrive, 1000);
   }
   function pushDrive(){
     var c = driveCfg(); if(!c.url || !c.key) return;
@@ -355,20 +356,20 @@
       if(j && j.ok) setSync("同期済み "+nowHM());
       else if(j && j.error==="auth") setSync("合言葉エラー");
       else setSync("同期エラー");
-    }).catch(function(){ setSync("オフライン"); });
+    }).catch(function(){ setSync("未同期（電波が戻れば送ります）"); });
   }
   function pullDrive(cb){
     var c = driveCfg(); if(!c.url || !c.key){ if(cb) cb(); return; }
-    setSync("読み込み中…");
     fetch(c.url + "?key=" + encodeURIComponent(c.key) + "&file=" + encodeURIComponent(DRIVE_FILE))
       .then(function(r){ return r.json(); }).then(function(j){
+        // すでに自分で操作していたら、Drive側で上書きせずローカルを正として送る
+        if(userTouched){ setSync("同期済み "+nowHM()); pushDrive(); if(cb) cb(); return; }
         if(j && j.lists && j.lists.length){
           data = j; if(!data.activeListId) data.activeListId = data.lists[0].id;
           try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch(e){}
           render(); setSync("同期済み "+nowHM());
         } else if(j && j.empty){
-          // Drive側がまだ空 → 今の端末のデータを初回アップロード
-          setSync("同期中…"); pushDrive();
+          setSync("同期済み "+nowHM()); pushDrive();
         } else if(j && j.error==="auth"){
           setSync("合言葉エラー");
         } else { setSync("同期済み "+nowHM()); }
@@ -407,21 +408,15 @@
     var target = modal.target;
     var title = (isList?"リスト":"項目")+"を"+(modal.mode==="add"?"追加":"編集");
     var curName = target ? target.name : "";
-    var curEmoji = target ? target.emoji : (isList?"📋":"💊");
     modal.name = modal.name!==undefined ? modal.name : curName;
-    modal.emoji = modal.emoji!==undefined ? modal.emoji : curEmoji;
 
     var canDelete = modal.mode==="edit" && (!isList || data.lists.length>1);
 
     var html = '<div class="overlay" data-overlay="1"><div class="sheet">'+
       '<div class="sheethead"><h3>'+title+'</h3><button class="iconbtn" data-close="1">'+ico("x")+'</button></div>'+
-      '<div class="pickedrow"><div class="pickedemoji">'+modal.emoji+'</div>'+
-      '<input class="nameinput" id="mName" placeholder="'+(isList?"リスト名":"項目の名前（例：朝の薬）")+'" value="'+esc(modal.name)+'"/></div>'+
-      '<div class="emojigrid">';
-    EMOJI_SET.forEach(function(e){
-      html += '<button class="emojicell'+(e===modal.emoji?' sel':'')+'" data-emoji="'+e+'">'+e+'</button>';
-    });
-    html += '</div><div class="actions">';
+      '<div class="pickedrow">'+
+      '<input class="nameinput" id="mName" placeholder="'+(isList?"リスト名":"項目の名前（例：ビタミンD）")+'" value="'+esc(modal.name)+'"/></div>'+
+      '<div class="actions">';
     if(canDelete) html += '<button class="delbtn" data-del="1">'+ico("trash")+'削除</button>';
     html += '<button class="savebtn" data-save="1">'+(modal.mode==="add"?"追加する":"保存する")+'</button></div></div></div>';
 
@@ -437,12 +432,12 @@
   function doSave(){
     var name = (modal.name||"").trim(); if(!name) return;
     if(modal.type==="list"){
-      if(modal.mode==="add"){ var nl={id:uid(),name:name,emoji:modal.emoji,habits:[]}; data.lists.push(nl); data.activeListId=nl.id; }
-      else { modal.target.name=name; modal.target.emoji=modal.emoji; }
+      if(modal.mode==="add"){ var nl={id:uid(),name:name,emoji:"",habits:[]}; data.lists.push(nl); data.activeListId=nl.id; }
+      else { modal.target.name=name; }
     } else {
       var list=activeList();
-      if(modal.mode==="add"){ list.habits.push({id:uid(),name:name,emoji:modal.emoji,checks:{}}); }
-      else { modal.target.name=name; modal.target.emoji=modal.emoji; }
+      if(modal.mode==="add"){ list.habits.push({id:uid(),name:name,emoji:"",checks:{}}); }
+      else { modal.target.name=name; }
     }
     save(); closeModal(); render();
   }
